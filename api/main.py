@@ -1,10 +1,11 @@
+import uvicorn
 from datetime import datetime
 import random
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from schemas import InvestmentCreate, InvestmentOutput
+from schemas import InvestmentCreate, InvestmentOutput, PortfolioOutput, SellInput, SellOutput
 from models import Investor
 from database import get_db, create_tables
 
@@ -25,14 +26,14 @@ async def lifespan(app: FastAPI):
 
 
 
-# FastAPI app instance
 app = FastAPI(
     title="Money Agent API",
-    description="A FastAPI application for the Money Agent project",
+    description="A FastAPI application for Gold Investment project",
     version="1.0.0",
     lifespan=lifespan
 )
 
+current_user = {}
 
 @app.get("/")
 async def root():
@@ -45,52 +46,111 @@ gold_rate = [99987.72, 99945.50, 99923.80, 99967.25, 99912.40, 99978.90, 99934.1
 async def get_gold_rate():
     """Route to get the gold rate"""
     price = random.choice(gold_rate)
-    return {"price": price}
+    return {"price": price,
+     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+     "time": datetime.now().strftime("%H:%M:%S"),
+     "timezone": datetime.now().strftime("%Z"),
+     "unit": "per 100 gram",
+    }
 
-@app.post("/investment", response_model=InvestmentOutput)
+@app.post("/buy_gold", response_model=InvestmentOutput)
 async def create_investment(investment: InvestmentCreate, db: Session = Depends(get_db)):
     """Route to create a new investment or add to existing one"""
     try:
-        # Check if user already exists
         existing_investor = db.query(Investor).filter(Investor.email == investment.email).first()
         
         if existing_investor:
-            # User exists, add new amount to existing amount
             old_amount = existing_investor.amount
             existing_investor.amount += investment.amount
             db.commit()
             db.refresh(existing_investor)
             
             return {
-                "message": "Investment updated successfully",
                 "id": existing_investor.id,
                 "username": existing_investor.username,
+                "email": existing_investor.email,
                 "previous_amount": old_amount,
                 "new_amount": investment.amount,
-                "total_amount": existing_investor.amount
+                "total_amount": existing_investor.amount,
+                "risk_level": existing_investor.risk_level,
+                "created_at": existing_investor.created_at
             }
+
         else:
-            # New user, create new investment
             new_investment = Investor(**investment.model_dump())
             db.add(new_investment)
             db.commit()
             db.refresh(new_investment)
             
-            return new_investment
-            
+            return {
+                "id": new_investment.id,
+                "username": new_investment.username,
+                "email": new_investment.email,
+                "previous_amount": 0,
+                "new_amount": investment.amount,
+                "total_amount": new_investment.amount,
+                "risk_level": new_investment.risk_level,
+                "created_at": new_investment.created_at
+            }
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error processing investment: {str(e)}")
+        
 
-@app.get("/investments", response_model=list[InvestmentOutput])
-async def get_investments(db: Session = Depends(get_db)):
-    """Route to get all investments"""
+@app.get("/portfolio/{email}", response_model=list[PortfolioOutput])
+async def get_investments(email: str, db: Session = Depends(get_db)):
+    """Route to get all investments for a specific email"""
     try:
-        investments = db.query(Investor).all()
+        investments = db.query(Investor).filter(Investor.email == email).all()
+
+        if not investments:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+            detail="No investments found for this email")
+        
         return investments
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching investments: {str(e)}")
 
+@app.post("/sell_gold", response_model=SellOutput)
+async def sell_gold(selling_info: SellInput, db: Session = Depends(get_db)):
+    """Route to sell gold"""
+    try:
+        investor = db.query(Investor).filter(Investor.email == selling_info.email).first()
+        
+        if not investor:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investor not found")
+
+        # calculate how much gold weight the investor has based on their investment amount
+        current_gold_rate = random.choice(gold_rate)
+        acquired_weight = (investor.amount / current_gold_rate) * 100  # Convert to grams
+
+        if selling_info.weightToSell > acquired_weight:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient gold weight to sell")
+
+        # calculate the sell amount based on current gold rate
+        sell_amount = (selling_info.weightToSell / 100) * current_gold_rate
+        prev_amount = investor.amount 
+        investor.amount -= sell_amount
+        
+        if investor.amount < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient investment amount")
+        
+        db.commit()
+        db.refresh(investor)
+
+        return {
+            "id": investor.id,
+            "username": investor.username,
+            "email": investor.email,
+            "previous_amount": prev_amount,
+            "sold_amount": sell_amount,  
+            "total_amount": investor.amount,
+            "risk_level": investor.risk_level,
+            "created_at": investor.created_at
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error processing gold sale: {str(e)}")
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
