@@ -40,3 +40,11 @@ class SellOutput(BaseModel):
     risk_level: RiskLevel
     created_at: datetime
 
+class GoldHoldingsOutput(BaseModel):
+    email: str
+    username: str
+    investment_amount: float
+    current_gold_rate_per_100g: float
+    gold_holdings_grams: float
+    risk_level: RiskLevel
+    last_updated: datetime

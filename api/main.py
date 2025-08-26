@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from schemas import InvestmentCreate, InvestmentOutput, PortfolioOutput, SellInput, SellOutput
+from schemas import GoldHoldingsOutput, InvestmentCreate, InvestmentOutput, PortfolioOutput, SellInput, SellOutput
 from models import Investor
 from database import get_db, create_tables
 
@@ -151,6 +151,39 @@ async def sell_gold(selling_info: SellInput, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error processing gold sale: {str(e)}")
+
+@app.get("/gold_holdings/{email}", response_model=GoldHoldingsOutput)
+async def get_gold_holdings(email: str, db: Session = Depends(get_db)):
+    """Route to get user's gold holdings in grams based on current gold price"""
+    try:
+        # Get the investor's information
+        investor = db.query(Investor).filter(Investor.email == email).first()
+        
+        if not investor:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Investor not found"
+            )
+        
+        current_gold_rate = random.choice(gold_rate)
+        gold_grams = (investor.amount / current_gold_rate) * 100
+        current_value = investor.amount
+        
+        return {
+            "email": investor.email,
+            "username": investor.username,
+            "investment_amount": investor.amount,
+            "current_gold_rate_per_100g": current_gold_rate,
+            "gold_holdings_grams": round(gold_grams, 2),
+            "risk_level": investor.risk_level,
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error calculating gold holdings: {str(e)}"
+        )
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
