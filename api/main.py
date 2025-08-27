@@ -1,15 +1,17 @@
+import os
 import uvicorn
+import asyncio
+import httpx
 from datetime import datetime
 import random
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from schemas import GoldHoldingsOutput, InvestmentCreate, InvestmentOutput, PortfolioOutput, SellInput, SellOutput
 from models import Investor
 from database import get_db, create_tables
 
-#to create all tables on application startup
+#to create all tables on application startup and start the background task to ping the API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -19,10 +21,12 @@ async def lifespan(app: FastAPI):
         print(f"Database connection failed: {e}")
         print("API will run without database functionality")
     
+    asyncio.create_task(ping_api())
+    print("Started background health check task")
+    
     yield
     
     print("Shutting down...")
-
 
 
 app = FastAPI(
@@ -34,10 +38,33 @@ app = FastAPI(
 
 current_user = {}
 
+async def ping_api():
+    """Background task to ping the API every 5 minutes to keep it active"""
+    while True:
+        try:
+            api_url = os.getenv("API_URL", "http://localhost:8000")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{api_url}/health")
+                print(f"Health check pinged at {datetime.now()}: {response.status_code}")
+        except Exception as e:
+            print(f"Health check failed: {e}")
+        
+        await asyncio.sleep(300)
+
 @app.get("/")
 async def root():
     """Root endpoint that returns a welcome message"""
     return {"message": "Welcome to Gold InvestmentAgent API"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring and keeping API active"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "message": "API is running"
+    }
 
 gold_rate = [99987.72, 99945.50, 99923.80, 99967.25, 99912.40, 99978.90, 99934.15, 99956.70, 99901.30, 99989.45, 99967.88]
 
