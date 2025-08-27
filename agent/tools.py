@@ -7,8 +7,7 @@ from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
 import requests
 
-API_URL = "http://localhost:8000"
-history = ""
+API_URL = "https://simplify-money-assignment.onrender.com"
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -26,11 +25,11 @@ def get_gold_rate() -> str:
 @tool
 def buy_gold(username: str, email: str, amount: float, risk_level: str) -> str:
     """Buy gold from the API. Requires amount, username, email, and risk_level.
-    Amount is the rupees to invest in gold and risk_level must be one of the following: conservative, moderate, aggressive."""
+    Amount is the rupees to invest in gold and risk_level must be one of the following: conservative, balanced, aggressive."""
 
-    valid_risk_levels = ["conservative", "moderate", "aggressive"]
+    valid_risk_levels = ["conservative", "balanced", "aggressive"]
     if risk_level.lower() not in valid_risk_levels:
-        return "Invalid risk level. Please choose from: conservative, moderate, aggressive."
+        return "Invalid risk level. Please choose from: conservative, balanced, aggressive."
     
     if amount <= 0:
         return "Amount must be greater than 0."
@@ -111,19 +110,24 @@ tools = [get_gold_rate, buy_gold, get_gold_holdings, sell_gold, get_portfolio]
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(tools)
 
 def our_agent(state: AgentState) -> AgentState:
-    system_prompt = SystemMessage(content="""You are a helpful financial advisor. 
+    system_prompt = SystemMessage(content=""" 
+    You are a helpful financial advisor. 
     You are given a list of tools to use to help the user. 
-    You are given a list of tools to use to help the user. 
-    You are to use the tools to help the user.
     
-    - if a user asks for gold rate, use the get_gold_rate tool""")
+    - if a user asks for gold rate, use the get_gold_rate tool
+    - if a user asks to buy gold, use the buy_gold tool
+    - if a user asks to sell gold, use the sell_gold tool
+    - if a user asks to get gold holdings, use the get_gold_holdings tool
+    - if a user asks to get portfolio, use the get_portfolio tool
+
+    REMEMBER: Always use tools to help the user and don't answer questions unrelated to financial advice.
+    """)
 
     if not state['messages']:
         user_input = "I'm ready to help you with your financial needs. What would you like to know?"
         user_message = HumanMessage(content=user_input)
         
     else:
-        # Get user input
         user_input = input("\nWhat would you like to know or would you like to invest in some digital gold? ")
         print(f"\nUSER: {user_input}")
         user_message = HumanMessage(content=user_input)
@@ -146,7 +150,7 @@ def should_continue(state: AgentState) -> str:
         return "continue"
     
     if len(messages) >= 2:
-        user_message = messages[-2]  # get user message before AI response
+        user_message = messages[-2]  
         if isinstance(user_message, HumanMessage):
             user_content = user_message.content.lower()
             if user_content in ['quit', 'exit', 'bye', 'goodbye','leave']:

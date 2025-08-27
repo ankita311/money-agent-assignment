@@ -9,10 +9,9 @@ from schemas import GoldHoldingsOutput, InvestmentCreate, InvestmentOutput, Port
 from models import Investor
 from database import get_db, create_tables
 
-
+#to create all tables on application startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     try:
         create_tables()
         print("Database connected successfully")
@@ -28,7 +27,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Money Agent API",
-    description="A FastAPI application for Gold Investment project",
+    description="A FastAPI application for Simplify Money Assignment",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -38,7 +37,7 @@ current_user = {}
 @app.get("/")
 async def root():
     """Root endpoint that returns a welcome message"""
-    return {"message": "Welcome to Money Agent API"}
+    return {"message": "Welcome to Gold InvestmentAgent API"}
 
 gold_rate = [99987.72, 99945.50, 99923.80, 99967.25, 99912.40, 99978.90, 99934.15, 99956.70, 99901.30, 99989.45, 99967.88]
 
@@ -47,7 +46,7 @@ async def get_gold_rate():
     """Route to get the gold rate"""
     price = random.choice(gold_rate)
     return {"price": price,
-     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+     "date": datetime.now().strftime("%Y-%m-%d"), 
      "time": datetime.now().strftime("%H:%M:%S"),
      "timezone": datetime.now().strftime("%Z"),
      "unit": "per 100 gram",
@@ -156,7 +155,6 @@ async def sell_gold(selling_info: SellInput, db: Session = Depends(get_db)):
 async def get_gold_holdings(email: str, db: Session = Depends(get_db)):
     """Route to get user's gold holdings in grams based on current gold price"""
     try:
-        # Get the investor's information
         investor = db.query(Investor).filter(Investor.email == email).first()
         
         if not investor:
